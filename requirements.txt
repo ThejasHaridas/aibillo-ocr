@@ -1,0 +1,20 @@
+# === FastAPI server ===
+fastapi
+uvicorn
+
+# === Google Cloud Vision ===
+google-cloud-vision
+
+# === Pydantic ===
+pydantic
+
+# === OpenAI or Groq client ===
+groq
+
+# === python-dotenv (optional but recommended for env vars) ===
+python-dotenv
+
+# === Logging and other stdlib imports don't need to be installed ===
+
+# If you want to use OpenAI's official SDK instead of Groq:
+openai
