@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 # === CONFIGURATION ===
 PHI3_MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
+PHI3_REVISION = "0a67737cc96d2554230f90338b163bc6380a2a85"  # pin revision!
 MAX_IMAGE_SIZE = (512, 512)
 MAX_TEXT_LENGTH = 500
 
@@ -53,30 +54,23 @@ def get_easyocr_reader():
 def get_phi3_model():
     try:
         device = "cpu"
-        from transformers import BitsAndBytesConfig
-        
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-            llm_int8_enable_fp32_cpu_offload=True
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            PHI3_MODEL_NAME,
+            trust_remote_code=True,
+            revision=PHI3_REVISION
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(PHI3_MODEL_NAME, trust_remote_code=True)
         with torch.no_grad():
             model = AutoModelForCausalLM.from_pretrained(
                 PHI3_MODEL_NAME,
-                quantization_config=quantization_config,
                 device_map={"": "cpu"},
                 trust_remote_code=True,
-                low_cpu_mem_usage=True,
-                torch_dtype=torch.bfloat16,
-                attn_implementation="eager",
-                max_memory={0: "4GB"}
+                torch_dtype=torch.float32,
+                low_cpu_mem_usage=True
             )
         model.eval()
-        logger.critical("Phi3 Mini model initialized with 4-bit quantization on CPU.")
+        logger.critical("Phi3 Mini model initialized on CPU.")
         return model, tokenizer, device
     except Exception as e:
         logger.critical(f"Failed to initialize Phi3 Mini: {e}")
@@ -120,7 +114,7 @@ class TextPreprocessor:
             }
             for result in results if result[2] > 0.5
         ]
-        
+
         if not words:
             return []
 
@@ -195,7 +189,7 @@ TABLE: {table_text[:500]}
                 return_attention_mask=True
             )
             inputs = inputs.to(device)
-            
+
             outputs = phi3_model.generate(
                 input_ids=inputs.input_ids,
                 attention_mask=inputs.attention_mask,
@@ -203,13 +197,12 @@ TABLE: {table_text[:500]}
                 temperature=0.1,
                 do_sample=True,
                 pad_token_id=phi3_tokenizer.pad_token_id,
-                num_beams=1,
-                stopping_criteria=None
+                num_beams=1
             )
-            
+
             response_text = phi3_tokenizer.decode(outputs[0], skip_special_tokens=True)
             fixed_json_str = fix_json_response(response_text.split("<|assistant|>")[-1].strip())
-            
+
             gc.collect()
             return json.loads(fixed_json_str)
     except Exception as e:
@@ -233,7 +226,7 @@ async def process_single_image_from_path(image_path: str) -> dict:
         return {"status": "error", "file_name": os.path.basename(image_path), "error": "EasyOCR not available"}
 
     logger.critical(f"Processing: {image_path}")
-    
+
     try:
         image = Image.open(image_path).convert('L')  # Grayscale
         image.thumbnail(MAX_IMAGE_SIZE)
@@ -245,7 +238,7 @@ async def process_single_image_from_path(image_path: str) -> dict:
             paragraph=False,
             batch_size=1
         )
-        
+
         if not results:
             return {"status": "error", "file_name": os.path.basename(image_path), "message": "No text found"}
 
@@ -285,7 +278,7 @@ async def process_single_image_from_path(image_path: str) -> dict:
         }
 
 async def main():
-    image_path = "/home/thejas/AIBILLO/textile/aibillo-ocr/test.jpg"
+    image_path = "/content/1000369591.jpg"
     result = await process_single_image_from_path(image_path)
     print(json.dumps(result, indent=2))
     gc.collect()
